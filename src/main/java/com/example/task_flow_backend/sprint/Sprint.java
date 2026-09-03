@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.sprint;
+package com.example.task_flow_backend.sprint;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +10,7 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
-import com.example.task_flow_backend.model.common.BaseEntity;
+import com.example.task_flow_backend.common.BaseEntity;
 
 @Entity
 @Table(name = "sprints")

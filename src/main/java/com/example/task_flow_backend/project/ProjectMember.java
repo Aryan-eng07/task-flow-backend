@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.project;
+package com.example.task_flow_backend.project;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

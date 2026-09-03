@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.common;
+package com.example.task_flow_backend.common;
 
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;

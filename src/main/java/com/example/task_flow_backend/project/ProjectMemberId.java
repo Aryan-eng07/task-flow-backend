@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.issue;
+package com.example.task_flow_backend.project;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -13,8 +13,8 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode
-public class IssueRequiredSkillId implements Serializable {
+public class ProjectMemberId implements Serializable {
 
-    private Long issueId;
-    private Long skillId;
+    private Long projectId;
+    private Long userId;
 }

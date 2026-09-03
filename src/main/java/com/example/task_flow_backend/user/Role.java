@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.user;
+package com.example.task_flow_backend.user;
 
 public enum Role {
     ADMIN,

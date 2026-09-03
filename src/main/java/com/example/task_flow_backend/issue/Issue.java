@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.issue;
+package com.example.task_flow_backend.issue;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,7 +12,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import com.example.task_flow_backend.model.common.BaseEntity;
+import com.example.task_flow_backend.common.BaseEntity;
 
 import java.math.BigDecimal;
 import java.time.Instant;

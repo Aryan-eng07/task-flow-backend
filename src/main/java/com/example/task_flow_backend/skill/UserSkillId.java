@@ -1,4 +1,4 @@
-package com.example.task_flow_backend.model.skill;
+package com.example.task_flow_backend.skill;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;

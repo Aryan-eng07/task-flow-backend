@@ -1,6 +1,6 @@
-package com.example.task_flow_backend.model.skill;
+package com.example.task_flow_backend.skill;
 
-import com.example.task_flow_backend.model.common.BaseEntity;
+import com.example.task_flow_backend.common.BaseEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
