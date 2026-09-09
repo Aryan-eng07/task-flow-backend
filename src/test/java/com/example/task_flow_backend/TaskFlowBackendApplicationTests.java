@@ -1,10 +1,9 @@
 package com.example.task_flow_backend;
 
+import com.example.task_flow_backend.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class TaskFlowBackendApplicationTests {
+class TaskFlowBackendApplicationTests extends AbstractIntegrationTest {
 
 	@Test
 	void contextLoads() {

@@ -15,9 +15,9 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    static final String CLAIM_EMAIL = "email";
-    static final String CLAIM_ROLE = "role";
-    static final String CLAIM_TYPE = "type";
+    public static final String CLAIM_EMAIL = "email";
+    public static final String CLAIM_ROLE = "role";
+    public static final String CLAIM_TYPE = "type";
 
     private final SecretKey key;
     private final JwtProperties properties;

@@ -1,0 +1,1700 @@
+{
+  "info": {
+    "name": "TaskFlow Backend - E2E",
+    "_postman_id": "a1b2c3d4-e5f6-47a8-9b0c-taskflowcol01",
+    "description": "End-to-end functional tests for the TaskFlow backend.\n\nPREREQUISITES\n1. Backend running on {{baseUrl}} (default http://localhost:8080/api/v1).\n2. Seed data loaded so a global ADMIN and the skill catalogue exist:\n   ./mvnw spring-boot:run -Dspring-boot.run.profiles=seed\n   (admin@taskflow.dev / password123)\n\nHOW TO RUN\n- Postman: pick the 'TaskFlow - Local' environment, then Run collection (keep folder order, iterations = 1).\n- Newman:  newman run postman/TaskFlow.postman_collection.json -e postman/TaskFlow.postman_environment.json\n\nThe collection is self-chaining: it registers fresh member users (a+{{runId}}@tf.test ...), creates its own project with a random key, exercises the full flow, then restores the assignment config. Re-runnable without cleanup.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "adminEmail", "value": "admin@taskflow.dev" },
+    { "key": "adminPassword", "value": "password123" },
+    { "key": "runId", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "aToken", "value": "" },
+    { "key": "aRefresh", "value": "" },
+    { "key": "aUserId", "value": "" },
+    { "key": "bToken", "value": "" },
+    { "key": "bUserId", "value": "" },
+    { "key": "cToken", "value": "" },
+    { "key": "cUserId", "value": "" },
+    { "key": "sprint2Id", "value": "" },
+    { "key": "javaSkillId", "value": "" },
+    { "key": "mysqlSkillId", "value": "" },
+    { "key": "projectId", "value": "" },
+    { "key": "projectKey", "value": "" },
+    { "key": "sprintId", "value": "" },
+    { "key": "issueKey", "value": "" },
+    { "key": "assigneeId", "value": "" },
+    { "key": "commentId", "value": "" },
+    { "key": "pollCount", "value": "0" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('runId')) {",
+          "  pm.collectionVariables.set('runId', Date.now().toString(36).slice(-7));",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global guard: every request should return JSON (or empty for 204) and never 5xx.",
+          "pm.test('no server error (5xx)', function () {",
+          "  pm.expect(pm.response.code, 'status ' + pm.response.code + ' body: ' + pm.response.text().slice(0,300))",
+          "    .to.be.below(500);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Auth",
+      "item": [
+        {
+          "name": "Admin login (seeded)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK - is the seed profile loaded? (admin@taskflow.dev)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('adminToken', j.accessToken);",
+                  "pm.test('returns bearer access + refresh tokens', function () {",
+                  "  pm.expect(j.accessToken).to.be.a('string');",
+                  "  pm.expect(j.refreshToken).to.be.a('string');",
+                  "  pm.expect(j.tokenType).to.eql('Bearer');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Register member A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('aToken', j.accessToken);",
+                  "pm.collectionVariables.set('aRefresh', j.refreshToken);",
+                  "var payload = JSON.parse(Buffer.from(j.accessToken.split('.')[1], 'base64').toString());",
+                  "pm.collectionVariables.set('aUserId', payload.sub);",
+                  "pm.test('JWT subject is the new user id', function () {",
+                  "  pm.expect(payload.sub).to.match(/^[0-9]+$/);",
+                  "  pm.expect(payload.role).to.eql('MEMBER');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"a+{{runId}}@tf.test\",\n  \"password\": \"password123\",\n  \"fullName\": \"Member A {{runId}}\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Register member B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('bToken', j.accessToken);",
+                  "var payload = JSON.parse(Buffer.from(j.accessToken.split('.')[1], 'base64').toString());",
+                  "pm.collectionVariables.set('bUserId', payload.sub);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"b+{{runId}}@tf.test\",\n  \"password\": \"password123\",\n  \"fullName\": \"Member B {{runId}}\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Register member C (outsider)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('cToken', j.accessToken);",
+                  "var payload = JSON.parse(Buffer.from(j.accessToken.split('.')[1], 'base64').toString());",
+                  "pm.collectionVariables.set('cUserId', payload.sub);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"c+{{runId}}@tf.test\",\n  \"password\": \"password123\",\n  \"fullName\": \"Member C {{runId}}\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Duplicate register -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('error shape: code EMAIL_ALREADY_USED', function () {",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.code).to.eql('EMAIL_ALREADY_USED');",
+                  "  pm.expect(j.status).to.eql(409);",
+                  "  pm.expect(j.path).to.include('/auth/register');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"a+{{runId}}@tf.test\",\n  \"password\": \"password123\",\n  \"fullName\": \"Member A again\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Invalid register -> 400 with fieldErrors",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "var j = pm.response.json();",
+                  "pm.test('VALIDATION_FAILED with per-field messages', function () {",
+                  "  pm.expect(j.code).to.eql('VALIDATION_FAILED');",
+                  "  pm.expect(j.fieldErrors).to.be.an('object');",
+                  "  pm.expect(Object.keys(j.fieldErrors).length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"fullName\": \"\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "GET /auth/me (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('profile matches the token subject', function () {",
+                  "  pm.expect(String(j.id)).to.eql(pm.collectionVariables.get('aUserId'));",
+                  "  pm.expect(j.email).to.eql('a+' + pm.collectionVariables.get('runId') + '@tf.test');",
+                  "  pm.expect(j.role).to.eql('MEMBER');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "GET /auth/me without token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/auth/me" }
+        },
+        {
+          "name": "Refresh access token (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('new access token issued', function () { pm.expect(j.accessToken).to.be.a('string'); });",
+                  "pm.collectionVariables.set('aToken', j.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{aRefresh}}\"\n}" },
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Skills & user profiles",
+      "item": [
+        {
+          "name": "List skills (resolve java/mysql ids)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('catalogue is an array', function () { pm.expect(arr).to.be.an('array'); });",
+                  "function idOf(name) { var s = arr.find(function (x) { return x.name === name; }); return s ? s.id : null; }",
+                  "if (idOf('java')) pm.collectionVariables.set('javaSkillId', idOf('java'));",
+                  "if (idOf('mysql')) pm.collectionVariables.set('mysqlSkillId', idOf('mysql'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/skills"
+          }
+        },
+        {
+          "name": "Create skill 'java' (admin, idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created or 409 already exists', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('javaSkillId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"java\"\n}" },
+            "url": "{{baseUrl}}/skills"
+          }
+        },
+        {
+          "name": "Create skill 'mysql' (admin, idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created or 409 already exists', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('mysqlSkillId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"mysql\"\n}" },
+            "url": "{{baseUrl}}/skills"
+          }
+        },
+        {
+          "name": "Create skill as non-admin -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });",
+                  "pm.test('error code ACCESS_DENIED', function () { pm.expect(pm.response.json().code).to.eql('ACCESS_DENIED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"should-not-be-created-{{runId}}\"\n}" },
+            "url": "{{baseUrl}}/skills"
+          }
+        },
+        {
+          "name": "Re-list skills (ensure both ids resolved)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var arr = pm.response.json();",
+                  "function idOf(name) { var s = arr.find(function (x) { return x.name === name; }); return s ? s.id : null; }",
+                  "if (idOf('java')) pm.collectionVariables.set('javaSkillId', idOf('java'));",
+                  "if (idOf('mysql')) pm.collectionVariables.set('mysqlSkillId', idOf('mysql'));",
+                  "pm.test('java & mysql skill ids are known', function () {",
+                  "  pm.expect(String(pm.collectionVariables.get('javaSkillId') || ''), 'javaSkillId').to.match(/^[0-9]+$/);",
+                  "  pm.expect(String(pm.collectionVariables.get('mysqlSkillId') || ''), 'mysqlSkillId').to.match(/^[0-9]+$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/skills"
+          }
+        },
+        {
+          "name": "Member A sets own skills (java=3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('returns the replaced skill set', function () {",
+                  "  pm.expect(arr).to.be.an('array').with.lengthOf(1);",
+                  "  pm.expect(arr[0].proficiency).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skills\": [\n    { \"skillId\": {{javaSkillId}}, \"proficiency\": 3 }\n  ]\n}" },
+            "url": "{{baseUrl}}/users/{{aUserId}}/skills"
+          }
+        },
+        {
+          "name": "Member B sets own skills (java=5, mysql=4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('two skills stored', function () { pm.expect(pm.response.json()).to.have.lengthOf(2); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skills\": [\n    { \"skillId\": {{javaSkillId}}, \"proficiency\": 5 },\n    { \"skillId\": {{mysqlSkillId}}, \"proficiency\": 4 }\n  ]\n}" },
+            "url": "{{baseUrl}}/users/{{bUserId}}/skills"
+          }
+        },
+        {
+          "name": "Member A cannot edit member B skills -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skills\": [\n    { \"skillId\": {{javaSkillId}}, \"proficiency\": 1 }\n  ]\n}" },
+            "url": "{{baseUrl}}/users/{{bUserId}}/skills"
+          }
+        },
+        {
+          "name": "List users (admin, paged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('PageResponse envelope', function () {",
+                  "  pm.expect(j).to.have.all.keys('content', 'page', 'size', 'totalElements', 'totalPages', 'last');",
+                  "  pm.expect(j.content).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+            "url": "{{baseUrl}}/users?active=true&size=5"
+          }
+        },
+        {
+          "name": "List users as MEMBER -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "Admin patches member B (wipLimit=4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('wipLimit updated', function () { pm.expect(pm.response.json().wipLimit).to.eql(4); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"wipLimit\": 4\n}" },
+            "url": "{{baseUrl}}/users/{{bUserId}}"
+          }
+        },
+        {
+          "name": "Member B workload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('workload shape', function () {",
+                  "  pm.expect(String(j.userId)).to.eql(pm.collectionVariables.get('bUserId'));",
+                  "  pm.expect(j.wipLimit).to.eql(4);",
+                  "  pm.expect(j.openIssues).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/users/{{bUserId}}/workload"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Projects & members",
+      "item": [
+        {
+          "name": "Create project (A becomes lead)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('projectKey', ('P' + pm.collectionVariables.get('runId')).toUpperCase().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('projectId', j.id);",
+                  "pm.test('creator is recorded as lead', function () {",
+                  "  pm.expect(String(j.leadId)).to.eql(pm.collectionVariables.get('aUserId'));",
+                  "  pm.expect(j.keyCode).to.eql(pm.collectionVariables.get('projectKey'));",
+                  "  pm.expect(j.issueCounter).to.eql(0);",
+                  "  pm.expect(j.active).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"keyCode\": \"{{projectKey}}\",\n  \"name\": \"E2E Project {{runId}}\",\n  \"description\": \"Created by the Postman E2E collection.\"\n}" },
+            "url": "{{baseUrl}}/projects"
+          }
+        },
+        {
+          "name": "Create project with duplicate key -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('code PROJECT_KEY_EXISTS', function () { pm.expect(pm.response.json().code).to.eql('PROJECT_KEY_EXISTS'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"keyCode\": \"{{projectKey}}\",\n  \"name\": \"Dup\"\n}" },
+            "url": "{{baseUrl}}/projects"
+          }
+        },
+        {
+          "name": "List my projects (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('includes the project just created', function () {",
+                  "  var ids = arr.map(function (p) { return String(p.id); });",
+                  "  pm.expect(ids).to.include(String(pm.collectionVariables.get('projectId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/projects"
+          }
+        },
+        {
+          "name": "Outsider (C) cannot GET project -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{cToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        },
+        {
+          "name": "Add member B (A as lead)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{bUserId}}\n}" },
+            "url": "{{baseUrl}}/projects/{{projectId}}/members"
+          }
+        },
+        {
+          "name": "Outsider (C) cannot add members -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{cToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{bUserId}}\n}" },
+            "url": "{{baseUrl}}/projects/{{projectId}}/members"
+          }
+        },
+        {
+          "name": "List members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('A and B are both members', function () {",
+                  "  var ids = arr.map(function (m) { return String(m.userId); });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('aUserId'));",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('bUserId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{bToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}/members"
+          }
+        },
+        {
+          "name": "Empty board (5 columns)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('board has the canonical columns', function () {",
+                  "  var cols = j.columns.map(function (c) { return c.status; });",
+                  "  pm.expect(cols).to.eql(['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'BLOCKED']);",
+                  "  j.columns.forEach(function (c) { pm.expect(c.issues).to.be.an('array'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}/board"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Sprints",
+      "item": [
+        {
+          "name": "Create sprint (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('sprintId', j.id);",
+                  "pm.test('starts PLANNED', function () { pm.expect(j.status).to.eql('PLANNED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sprint 1\",\n  \"goal\": \"Prove the pipeline\"\n}" },
+            "url": "{{baseUrl}}/projects/{{projectId}}/sprints"
+          }
+        },
+        {
+          "name": "Start sprint (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('now ACTIVE', function () { pm.expect(pm.response.json().status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/start"
+          }
+        },
+        {
+          "name": "Start a second sprint -> 409",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// create a throwaway PLANNED sprint to attempt starting while one is ACTIVE",
+                  "var base = pm.collectionVariables.get('baseUrl');",
+                  "pm.sendRequest({",
+                  "  url: base + '/projects/' + pm.collectionVariables.get('projectId') + '/sprints',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + pm.collectionVariables.get('aToken') },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ name: 'Sprint 2' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res.code === 201) pm.collectionVariables.set('sprint2Id', res.json().id);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('code SPRINT_ALREADY_ACTIVE', function () { pm.expect(pm.response.json().code).to.eql('SPRINT_ALREADY_ACTIVE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/sprints/{{sprint2Id}}/start"
+          }
+        },
+        {
+          "name": "List ACTIVE sprints",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('exactly one ACTIVE sprint, and it is ours', function () {",
+                  "  pm.expect(arr).to.have.lengthOf(1);",
+                  "  pm.expect(String(arr[0].id)).to.eql(String(pm.collectionVariables.get('sprintId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}/sprints?status=ACTIVE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Issues & auto-assignment",
+      "item": [
+        {
+          "name": "Create issue (A reports; requires java+mysql)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('issueKey', j.issueKey);",
+                  "pm.collectionVariables.set('pollCount', 0);",
+                  "pm.test('created UNASSIGNED - the engine runs after the 201', function () {",
+                  "  pm.expect(j.issueKey).to.match(new RegExp('^' + pm.collectionVariables.get('projectKey') + '-\\\\d+$'));",
+                  "  pm.expect(j.assigneeId).to.be.null;",
+                  "  pm.expect(j.assignmentMode).to.eql('UNASSIGNED');",
+                  "  pm.expect(j.status).to.eql('TODO');",
+                  "  pm.expect(j.requiredSkills).to.have.lengthOf(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Wire up MySQL connection pool\",\n  \"description\": \"Hikari + Flyway on boot\",\n  \"type\": \"TASK\",\n  \"priority\": \"HIGH\",\n  \"sprintId\": {{sprintId}},\n  \"requiredSkills\": [\n    { \"skillId\": {{javaSkillId}}, \"weight\": 2 },\n    { \"skillId\": {{mysqlSkillId}}, \"weight\": 1 }\n  ]\n}" },
+            "url": "{{baseUrl}}/projects/{{projectId}}/issues"
+          }
+        },
+        {
+          "name": "Poll assignment-log until scored",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// crude delay so the async AFTER_COMMIT listener can finish (~<1s typically)",
+                  "var until = Date.now() + 800;",
+                  "while (Date.now() < until) { /* spin */ }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var n = parseInt(pm.collectionVariables.get('pollCount') || '0', 10);",
+                  "if (rows.length === 0 && n < 6) {",
+                  "  pm.collectionVariables.set('pollCount', n + 1);",
+                  "  postman.setNextRequest('Poll assignment-log until scored');",
+                  "  return;",
+                  "}",
+                  "pm.test('the full candidate ranking was persisted', function () {",
+                  "  pm.expect(rows.length, 'assignment_log rows').to.be.above(0);",
+                  "});",
+                  "var selected = rows.filter(function (r) { return r.selected; });",
+                  "pm.test('exactly one candidate is marked selected', function () { pm.expect(selected).to.have.lengthOf(1); });",
+                  "pm.test('reporter (A) is present but blocked from self-assign', function () {",
+                  "  var a = rows.find(function (r) { return String(r.candidateId) === pm.collectionVariables.get('aUserId'); });",
+                  "  pm.expect(a, 'A in ranking').to.be.an('object');",
+                  "  pm.expect(a.selected).to.be.false;",
+                  "  pm.expect(a.reason).to.eql('SELF_ASSIGN_BLOCKED');",
+                  "});",
+                  "pm.test('winner is member B (best weighted skill match)', function () {",
+                  "  pm.expect(String(selected[0].candidateId)).to.eql(pm.collectionVariables.get('bUserId'));",
+                  "});",
+                  "pm.test('scores are within [0,1] and total is a weighted blend', function () {",
+                  "  rows.forEach(function (r) {",
+                  "    ['skillScore', 'loadScore', 'speedScore', 'totalScore'].forEach(function (k) {",
+                  "      pm.expect(Number(r[k]), k).to.be.within(0, 1);",
+                  "    });",
+                  "  });",
+                  "});",
+                  "pm.collectionVariables.set('assigneeId', selected[0].candidateId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}/assignment-log"
+          }
+        },
+        {
+          "name": "Get issue (assignee applied)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('issue is now AUTO-assigned to member B', function () {",
+                  "  pm.expect(String(j.assigneeId)).to.eql(pm.collectionVariables.get('bUserId'));",
+                  "  pm.expect(j.assignmentMode).to.eql('AUTO');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}"
+          }
+        },
+        {
+          "name": "Get unknown issue -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', function () { pm.response.to.have.status(404); });",
+                  "pm.test('code NOT_FOUND', function () { pm.expect(pm.response.json().code).to.eql('NOT_FOUND'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{projectKey}}-999999"
+          }
+        },
+        {
+          "name": "List issues assignee=me (B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('B sees the auto-assigned issue in their queue', function () {",
+                  "  var keys = j.content.map(function (i) { return i.issueKey; });",
+                  "  pm.expect(keys).to.include(pm.collectionVariables.get('issueKey'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{bToken}}" } ],
+            "url": "{{baseUrl}}/issues?assignee=me&status=TODO&page=0&size=20"
+          }
+        },
+        {
+          "name": "Move issue TODO -> IN_PROGRESS (B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('status + board order updated', function () {",
+                  "  pm.expect(j.status).to.eql('IN_PROGRESS');",
+                  "  pm.expect(j.boardOrder).to.eql(1);",
+                  "  pm.expect(j.resolvedAt).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"boardOrder\": 1\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/status"
+          }
+        },
+        {
+          "name": "Move issue -> DONE sets resolvedAt (B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('resolvedAt is stamped on DONE', function () {",
+                  "  pm.expect(j.status).to.eql('DONE');",
+                  "  pm.expect(j.resolvedAt).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"DONE\"\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/status"
+          }
+        },
+        {
+          "name": "Reject status TRIAGE via API -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('code STATUS_NOT_ALLOWED', function () { pm.expect(pm.response.json().code).to.eql('STATUS_NOT_ALLOWED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"TRIAGE\"\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/status"
+          }
+        },
+        {
+          "name": "Manual assignee -> A, mode MANUAL (B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('assignee switched and mode is MANUAL', function () {",
+                  "  pm.expect(String(j.assigneeId)).to.eql(pm.collectionVariables.get('aUserId'));",
+                  "  pm.expect(j.assignmentMode).to.eql('MANUAL');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{aUserId}}\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/assignee"
+          }
+        },
+        {
+          "name": "Assign to non-member -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('code NOT_PROJECT_MEMBER', function () { pm.expect(pm.response.json().code).to.eql('NOT_PROJECT_MEMBER'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{cUserId}}\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/assignee"
+          }
+        },
+        {
+          "name": "Reassign (re-runs the engine)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('engine picks member B again; A stays blocked as reporter', function () {",
+                  "  pm.expect(String(j.assigneeId)).to.eql(pm.collectionVariables.get('bUserId'));",
+                  "  pm.expect(j.assignmentMode).to.eql('AUTO');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}/reassign"
+          }
+        },
+        {
+          "name": "Update issue fields (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('priority + estimate persisted', function () {",
+                  "  pm.expect(j.priority).to.eql('CRITICAL');",
+                  "  pm.expect(Number(j.estimateHours)).to.eql(6.5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"priority\": \"CRITICAL\",\n  \"estimateHours\": 6.5\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}"
+          }
+        },
+        {
+          "name": "Board shows the issue in DONE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "var done = j.columns.find(function (c) { return c.status === 'DONE'; });",
+                  "pm.test('issue is in the DONE column', function () {",
+                  "  var keys = done.issues.map(function (i) { return i.issueKey; });",
+                  "  pm.expect(keys).to.include(pm.collectionVariables.get('issueKey'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}/board?sprintId={{sprintId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Comments",
+      "item": [
+        {
+          "name": "Add comment (B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('commentId', j.id);",
+                  "pm.test('author resolved to a display name', function () {",
+                  "  pm.expect(String(j.authorId)).to.eql(pm.collectionVariables.get('bUserId'));",
+                  "  pm.expect(j.authorName).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{bToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"body\": \"Verified against staging, shipping it.\"\n}" },
+            "url": "{{baseUrl}}/issues/{{issueKey}}/comments"
+          }
+        },
+        {
+          "name": "List comments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('our comment is listed', function () {",
+                  "  var ids = pm.response.json().map(function (c) { return String(c.id); });",
+                  "  pm.expect(ids).to.include(String(pm.collectionVariables.get('commentId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}/comments"
+          }
+        },
+        {
+          "name": "Non-author (A) cannot delete comment -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/comments/{{commentId}}"
+          }
+        },
+        {
+          "name": "Author (B) deletes comment -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{bToken}}" } ],
+            "url": "{{baseUrl}}/comments/{{commentId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Assignment admin & preview",
+      "item": [
+        {
+          "name": "GET /assignment/config",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('exposes the tunable weights', function () {",
+                  "  ['skillWeight', 'loadWeight', 'speedWeight', 'minSkillThreshold', 'preventSelfAssign'].forEach(function (k) {",
+                  "    pm.expect(j).to.have.property(k);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/assignment/config"
+          }
+        },
+        {
+          "name": "PUT /assignment/config as non-admin -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skillWeight\": 0.6\n}" },
+            "url": "{{baseUrl}}/assignment/config"
+          }
+        },
+        {
+          "name": "PUT /assignment/config as admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('weights applied live', function () {",
+                  "  pm.expect(j.skillWeight).to.eql(0.6);",
+                  "  pm.expect(j.loadWeight).to.eql(0.25);",
+                  "  pm.expect(j.speedWeight).to.eql(0.15);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skillWeight\": 0.6,\n  \"loadWeight\": 0.25,\n  \"speedWeight\": 0.15\n}" },
+            "url": "{{baseUrl}}/assignment/config"
+          }
+        },
+        {
+          "name": "Validation: weight out of range -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skillWeight\": 5\n}" },
+            "url": "{{baseUrl}}/assignment/config"
+          }
+        },
+        {
+          "name": "POST /assignment/preview (no issue created)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var arr = pm.response.json();",
+                  "pm.test('ranked candidate list returned', function () {",
+                  "  pm.expect(arr).to.be.an('array').with.length.of.at.least(1);",
+                  "  arr.forEach(function (c) {",
+                  "    pm.expect(c).to.have.property('userId');",
+                  "    pm.expect(c).to.have.property('totalScore');",
+                  "    pm.expect(c).to.have.property('eligible');",
+                  "  });",
+                  "});",
+                  "pm.test('sorted best-first by totalScore', function () {",
+                  "  for (var i = 1; i < arr.length; i++) {",
+                  "    pm.expect(Number(arr[i - 1].totalScore)).to.be.at.least(Number(arr[i].totalScore));",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"projectId\": {{projectId}},\n  \"requiredSkills\": [\n    { \"skillId\": {{javaSkillId}}, \"weight\": 1 }\n  ]\n}" },
+            "url": "{{baseUrl}}/assignment/preview"
+          }
+        },
+        {
+          "name": "POST /assignment/rebalance (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('rebalance summary shape', function () {",
+                  "  pm.expect(j).to.have.all.keys('scanned', 'reassigned', 'stillTriaged');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+            "url": "{{baseUrl}}/assignment/rebalance"
+          }
+        },
+        {
+          "name": "Restore default config (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK - config reset for re-runs', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.expect(j.skillWeight).to.eql(0.5);",
+                  "pm.expect(j.loadWeight).to.eql(0.3);",
+                  "pm.expect(j.speedWeight).to.eql(0.2);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"skillWeight\": 0.5,\n  \"loadWeight\": 0.3,\n  \"speedWeight\": 0.2,\n  \"minSkillThreshold\": 0.2,\n  \"preventSelfAssign\": true\n}" },
+            "url": "{{baseUrl}}/assignment/config"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 - Sprint close & teardown",
+      "item": [
+        {
+          "name": "Complete sprint (A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('sprint COMPLETED', function () { pm.expect(pm.response.json().status).to.eql('COMPLETED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{aToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/complete"
+          }
+        },
+        {
+          "name": "Sprint report",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('report shape', function () {",
+                  "  pm.expect(j).to.have.all.keys('sprintId', 'status', 'totalIssues', 'completedIssues', 'carriedOverIssues', 'completionRate');",
+                  "  pm.expect(j.completedIssues).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/report"
+          }
+        },
+        {
+          "name": "Delete issue (A as lead) -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}"
+          }
+        },
+        {
+          "name": "Deleted issue is gone -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/issues/{{issueKey}}"
+          }
+        },
+        {
+          "name": "Soft-delete project (admin) -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        },
+        {
+          "name": "Soft-deleted project drops out of listing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('project no longer listed for its lead', function () {",
+                  "  var ids = pm.response.json().map(function (p) { return String(p.id); });",
+                  "  pm.expect(ids).to.not.include(String(pm.collectionVariables.get('projectId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{aToken}}" } ],
+            "url": "{{baseUrl}}/projects"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -34,6 +34,10 @@ public class Project extends BaseEntity {
     @Column(name = "issue_counter", nullable = false)
     private int issueCounter = 0;
 
+    /** Soft-delete flag; {@code DELETE /projects/{id}} clears this instead of removing the row. */
+    @Column(nullable = false)
+    private boolean active = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     private Instant createdAt;
